@@ -1,0 +1,32 @@
+syntax = "proto3";
+
+package booking;
+
+// Le service gérant les réservations.
+service Booking {
+    // RPC pour obtenir la liste complète des réservations.
+    rpc GetAllBookings(Empty) returns (stream BookingItem) {}
+
+    // RPC pour obtenir les réservations d'un utilisateur spécifique.
+    rpc GetBookingsByUser(UserId) returns (stream BookingItem) {}
+}
+
+// Message représentant un utilisateur.
+message UserId {
+    string user_id = 1;
+}
+
+// Message représentant une réservation.
+message BookingItem {
+    string user_id = 1;
+    repeated Date movies = 2;
+}
+
+// Message représentant une date et les IDs des films réservés pour cette date.
+message Date {
+    string date = 1;
+    repeated string movie_ids = 2;
+}
+
+// Message vide.
+message Empty { }

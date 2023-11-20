@@ -1,107 +1,36 @@
-# import grpc
-# from concurrent import futures
-# import booking_pb2
-# import booking_pb2_grpc
-# import json
-#
-# class BookingServicer(booking_pb2_grpc.BookingServicer):
-#
-#     def __init__(self):
-#         with open('{}/data/bookings.json'.format("."), "r") as jsf:
-#             self.db = json.load(jsf)["schedule"]
-#
-# def serve():
-#     server = grpc.server(futures.ThreadPoolExecutor(max_workers=10))
-#     booking_pb2_grpc.add_BookingServicer_to_server(BookingServicer(), server)
-#     server.add_insecure_port('[::]:3002')
-#     server.start()
-#     server.wait_for_termination()
-#
-#
-# if __name__ == '__main__':
-#     serve()
-from flask import Flask, render_template, request, jsonify, make_response
-import requests
+import grpc
+from concurrent import futures
+import booking_pb2
+import booking_pb2_grpc
 import json
-from datetime import datetime
-from werkzeug.exceptions import NotFound
 
-app = Flask(__name__)
+class BookingServicer(booking_pb2_grpc.BookingServicer):
 
-PORT = 3201
-HOST = '0.0.0.0'
+    def __init__(self):
+        with open('{}/data/bookings.json'.format("."), "r") as jsf:
+            self.db = json.load(jsf)["bookings"]
 
-with open('{}/data/bookings.json'.format("."), "r") as jsf:
-   bookings = json.load(jsf)["bookings"]
+    def GetAllBookings(self, request, context):
+        for booking in self.db:
+            yield booking_pb2.BookingItem(
+                user_id=booking["userid"],
+                movies=[booking_pb2.Date(date=date["date"], movie_ids=date["movies"]) for date in booking["dates"]]
+            )
 
-@app.route("/", methods=['GET'])
-def home():
-   return "<h1 style='color:blue'>Welcome to the Booking service!</h1>"
+    def GetBookingsByUser(self, request, context):
+        for booking in self.db:
+            if booking["userid"] == request.user_id:
+                yield booking_pb2.BookingItem(
+                    user_id=booking["userid"],
+                    movies=[booking_pb2.Date(date=date["date"], movie_ids=date["movies"]) for date in booking["dates"]]
+                )
 
-@app.route("/bookings", methods=['GET'])
-def get_json():
-    # Renvoie la liste complète des réservations
-    return jsonify({"bookings": bookings})
+def serve():
+    server = grpc.server(futures.ThreadPoolExecutor(max_workers=10))
+    booking_pb2_grpc.add_BookingServicer_to_server(BookingServicer(), server)
+    server.add_insecure_port('[::]:3003')
+    server.start()
+    server.wait_for_termination()
 
-@app.route("/bookings/<userid>", methods=['GET'])
-def get_booking_for_user(userid):
-    user_bookings = []
-    for booking in bookings:
-        if booking["userid"] == userid:
-            user_bookings.append(booking)
-
-    if not user_bookings:
-        return make_response(jsonify({"error": "No bookings found for this user"}), 404)
-
-    return jsonify(user_bookings)
-
-@app.route("/bookings/<userid>", methods=['POST'])
-def add_booking_byuser(userid):
-    booking_data = request.get_json()
-
-    # Vérification de la structure et du format de données
-    if not booking_data or 'date' not in booking_data or 'movieid' not in booking_data:
-        return make_response(jsonify({"error": "Invalid data format"}), 400)
-
-    # Vérification du format de la date
-    try:
-        datetime.strptime(booking_data['date'], '%Y%m%d')
-    except ValueError:
-        return make_response(jsonify({"error": "Invalid date format"}), 400)
-
-    user_found = False
-    date_already_booked = False
-
-    # Parcourir les réservations pour vérifier si l'utilisateur et la date existent
-    for booking in bookings:
-        if booking['userid'] == userid:
-            user_found = True
-            for date in booking['dates']:
-                if date['date'] == booking_data['date']:
-                    date_already_booked = True
-                    break
-            if date_already_booked:
-                break
-
-    if date_already_booked:
-        return make_response(jsonify({"error": "An existing item already exists"}), 409)
-
-    # Ajout de la réservation pour un utilisateur existant ou un nouvel utilisateur
-    if user_found:
-        for booking in bookings:
-            if booking['userid'] == userid:
-                booking['dates'].append({"date": booking_data['date'], "movies": [booking_data['movieid']]})
-                break
-    else:
-        new_user_booking = {
-            "userid": userid,
-            "dates": [{"date": booking_data['date'], "movies": [booking_data['movieid']]}]
-        }
-        bookings.append(new_user_booking)
-
-    return jsonify(booking_data), 200
-
-if __name__ == "__main__":
-   print("Server running in port %s"%(PORT))
-   app.run(host=HOST, port=PORT)
-
+if __name__ == '__main__':
+    serve()
