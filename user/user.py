@@ -1,5 +1,10 @@
 from flask import Flask, render_template, request, jsonify, make_response
 import requests
+import grpc
+from google.protobuf.json_format import MessageToJson
+
+import booking_pb2
+import booking_pb2_grpc
 import json
 from werkzeug.exceptions import NotFound
 
@@ -17,38 +22,35 @@ def home():
 
 @app.route("/users/<userId>/bookings", methods=['GET'])
 def getUserBookings(userId):
-    # URL du service Booking
-    print("coucou")
-    booking_service_url = "http://localhost:3201/bookings/{}".format(userId)
+    with grpc.insecure_channel('localhost:3003') as channel:  # Remplacer par l'adresse du service Booking
+        booking_client = booking_pb2_grpc.BookingStub(channel)
 
-    try:
-        # Appel au service Booking
-        response = requests.get(booking_service_url)
-        if response.status_code == 200:
-            return jsonify(response.json()), 200
-        else:
-            return jsonify({"error": "User not found"}), 404
-    except requests.RequestException as e:
-        return jsonify({"error": str(e)}), 500
+        booking_request = booking_client.GetBookingsByUser(booking_pb2.UserId(userid=userId))
+
+        try:
+            # Appel au service Booking
+            response = booking_client.GetBookingsByUser(booking_request)
+            bookings = [{"userid": booking.userid, "dates": booking.dates} for booking in response]
+            return jsonify(bookings), 200
+        except grpc.RpcError as e:
+            return jsonify({"error": str(e)}), 500
 
 @app.route("/users/<userId>/bookings/movies", methods=['GET'])
 def getUserBookingMovies(userId):
-    # URL du service Booking
-    booking_service_url = "http://localhost:3201/bookings/{}".format(userId)
+    with grpc.insecure_channel('localhost:3002') as channel:  # Remplacer par l'adresse du service Booking
+        booking_client = booking_pb2_grpc.BookingStub(channel)
 
-    try:
-        # Appel au service Booking
-        booking_response = requests.get(booking_service_url)
-        if booking_response.status_code == 200:
-            bookings_data = booking_response.json()
+        try:
+            # Appel au service Booking
+            response = booking_client.GetBookingsByUser(booking_pb2.UserId(user_id=userId))
             movie_details = []
 
             # URL de base du service Movie GraphQL
             movie_service_url = "http://127.0.0.1:3001/graphql"
 
-            for booking in bookings_data:
-                for date in booking['dates']:
-                    for movie_id in date['movies']:
+            for booking in response:
+                for date in booking.dates:
+                    for movie_id in date.movie_ids:
                         # Construction de la requête GraphQL
                         graphql_query = """
                             query getMovieById($movieId: String!) {
@@ -71,11 +73,37 @@ def getUserBookingMovies(userId):
                             movie_details.append(movie_response.json()['data']['movie_by_id'])
 
             return jsonify(movie_details), 200
-        else:
-            return jsonify({"error": "User or booking not found"}), 404
-    except requests.RequestException as e:
-        return jsonify({"error": str(e)}), 500
+        except grpc.RpcError as e:
+            return jsonify({"error": str(e)}), 500
 
+@app.route("/users/<userId>/bookings/add", methods=['POST'])
+def addBookingForUser(userId):
+    # Récupérer les données de la requête entrante
+    booking_data = request.get_json()
+
+    with grpc.insecure_channel('localhost:3002') as channel:  # Remplacer par l'adresse du service Booking
+        booking_client = booking_pb2_grpc.BookingStub(channel)
+
+        try:
+            # Créer une requête gRPC avec les données reçues
+            create_booking_request = booking_pb2.CreateBookingRequest(
+                user_id=userId,
+                date=booking_data['date'],
+                movie_id=booking_data['movie_id']
+            )
+
+            # Envoyer la requête au service Booking
+            response = booking_client.CreateBooking(create_booking_request)
+
+            if response.error:
+                # Gérer les erreurs possibles du service Booking
+                return jsonify({"error": response.error}), 400
+            else:
+                return jsonify({"message": "Booking added successfully"}), 200
+
+        except grpc.RpcError as e:
+            # Gérer les erreurs de connexion au service Booking
+            return jsonify({"error": "Failed to connect to Booking service", "details": str(e)}), 500
 
 if __name__ == "__main__":
    print("Server running in port %s"%(PORT))
