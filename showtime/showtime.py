@@ -17,8 +17,12 @@ class ShowtimeServicer(showtime_pb2_grpc.ShowtimeServicer):
     def GetMoviesByDate(self, request, context):
         for showtime in self.db:
             if showtime["date"] == request.date:
+                # Créer et renvoyer un objet Schedule avec la date et les IDs de films
                 return showtime_pb2.Schedule(date=showtime["date"], movies=showtime["movies"])
+
+        # Si aucune correspondance n'est trouvée, renvoyer un objet Schedule vide
         return showtime_pb2.Schedule()
+
 
 def serve():
     server = grpc.server(futures.ThreadPoolExecutor(max_workers=10))

@@ -25,6 +25,11 @@ class BookingStub(object):
                 request_serializer=booking__pb2.UserId.SerializeToString,
                 response_deserializer=booking__pb2.BookingItem.FromString,
                 )
+        self.CreateBooking = channel.unary_unary(
+                '/booking.Booking/CreateBooking',
+                request_serializer=booking__pb2.CreateBookingRequest.SerializeToString,
+                response_deserializer=booking__pb2.CreateBookingResponse.FromString,
+                )
 
 
 class BookingServicer(object):
@@ -45,6 +50,13 @@ class BookingServicer(object):
         context.set_details('Method not implemented!')
         raise NotImplementedError('Method not implemented!')
 
+    def CreateBooking(self, request, context):
+        """RPC pour ajouter une réservation pour un utilisateur sur une date précise pour un film
+        """
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
 
 def add_BookingServicer_to_server(servicer, server):
     rpc_method_handlers = {
@@ -57,6 +69,11 @@ def add_BookingServicer_to_server(servicer, server):
                     servicer.GetBookingsByUser,
                     request_deserializer=booking__pb2.UserId.FromString,
                     response_serializer=booking__pb2.BookingItem.SerializeToString,
+            ),
+            'CreateBooking': grpc.unary_unary_rpc_method_handler(
+                    servicer.CreateBooking,
+                    request_deserializer=booking__pb2.CreateBookingRequest.FromString,
+                    response_serializer=booking__pb2.CreateBookingResponse.SerializeToString,
             ),
     }
     generic_handler = grpc.method_handlers_generic_handler(
@@ -100,5 +117,22 @@ class Booking(object):
         return grpc.experimental.unary_stream(request, target, '/booking.Booking/GetBookingsByUser',
             booking__pb2.UserId.SerializeToString,
             booking__pb2.BookingItem.FromString,
+            options, channel_credentials,
+            insecure, call_credentials, compression, wait_for_ready, timeout, metadata)
+
+    @staticmethod
+    def CreateBooking(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_unary(request, target, '/booking.Booking/CreateBooking',
+            booking__pb2.CreateBookingRequest.SerializeToString,
+            booking__pb2.CreateBookingResponse.FromString,
             options, channel_credentials,
             insecure, call_credentials, compression, wait_for_ready, timeout, metadata)
