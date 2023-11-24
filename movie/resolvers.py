@@ -1,85 +1,103 @@
 import json
 
+# Chemin vers les fichiers de données
+MOVIES_DATA_FILE = '{}/data/movies.json'.format(".")
+
+
+# Résolveur pour récupérer tous les films
 def all_movies(_, info):
-    with open('{}/data/movies.json'.format("."), "r") as file:
-        movies_data = json.load(file)
-        return movies_data['movies']
+    with open(MOVIES_DATA_FILE, "r") as file:
+        return json.load(file)['movies']
 
-def movie_with_id(_,info,_id):
-    with open('{}/data/movies.json'.format("."), "r") as file:
-        movies = json.load(file)
-        for movie in movies['movies']:
-            if movie['id'] == _id:
-                return movie
 
+# Résolveur pour récupérer un film par son ID
+def movie_with_id(_, info, _id):
+    return find_movie_by_id(_id)
+
+
+# Résolveur pour récupérer les films par réalisateur
 def movies_by_director(_, info, director):
-    with open('{}/data/movies.json'.format("."), "r") as file:
+    with open(MOVIES_DATA_FILE, "r") as file:
         movies = json.load(file)["movies"]
-        matching_movies = [movie for movie in movies if movie['director'].lower() == director.lower()]
+        return [movie for movie in movies if movie['director'].lower() == director.lower()]
 
-    return matching_movies
 
+# Résolveur pour récupérer un film par son titre
 def movie_by_title(_, info, title):
-    with open('{}/data/movies.json'.format("."), "r") as file:
-        movies_data = json.load(file)
-        for movie in movies_data['movies']:
-            if movie['title'].lower() == title.lower():
-                return movie
-    return None  # Retourne None si aucun film n'est trouvé avec ce titre
+    with open(MOVIES_DATA_FILE, "r") as file:
+        movies = json.load(file)['movies']
+        return next((movie for movie in movies if movie['title'].lower() == title.lower()), None)
 
-def update_movie_rate(_,info,_id,_rate):
-    newmovies = {}
-    newmovie = {}
-    with open('{}/data/movies.json'.format("."), "r") as rfile:
-        movies = json.load(rfile)
-        for movie in movies['movies']:
-            if movie['id'] == _id:
-                movie['rating'] = _rate
-                newmovie = movie
-                newmovies = movies
-    with open('{}/data/movies.json'.format("."), "w") as wfile:
-        json.dump(newmovies, wfile)
-    return newmovie
 
-def resolve_actors_in_movie(movie, info):
-    with open('{}/data/actors.json'.format("."), "r") as file:
-        data = json.load(file)
-        actors = [actor for actor in data['actors'] if movie['id'] in actor['films']]
-        return actors
+# Résolveur pour mettre à jour la note d'un film
+def update_movie_rate(_, info, _id, _rate):
+    return update_and_save_movie(_id, _rate)
 
+
+# Résolveur pour créer un nouveau film
 def create_movie(_, info, movieid, title, director, rating):
-    new_movie = {
-        "id": movieid,
-        "title": title,
-        "director": director,
-        "rating": rating
-    }
+    return create_and_save_movie(movieid, title, director, rating)
 
-    with open('{}/data/movies.json'.format("."), "r") as file:
+
+# Résolveur pour supprimer un film
+def delete_movie(_, info, movieid):
+    return delete_and_save_movie(movieid)
+
+
+# Fonction auxiliaire pour trouver un film par son ID
+def find_movie_by_id(movie_id):
+    with open(MOVIES_DATA_FILE, "r") as file:
+        movies = json.load(file)['movies']
+        return next((movie for movie in movies if movie['id'] == movie_id), None)
+
+
+# Fonction auxiliaire pour mettre à jour et sauvegarder un film
+def update_and_save_movie(movie_id, new_rate):
+    with open(MOVIES_DATA_FILE, "r") as file:
         movies_data = json.load(file)
-        for movie in movies_data['movies']:
-            if movie['id'] == movieid:
-                raise Exception("Movie ID already exists")
+        movies = movies_data['movies']
+        movie = next((movie for movie in movies if movie['id'] == movie_id), None)
 
-    movies_data['movies'].append(new_movie)
+        if not movie:
+            return {"error": "Movie not found"}
 
-    with open('{}/data/movies.json'.format("."), "w") as file:
-        json.dump(movies_data, file)
+        movie['rating'] = new_rate
+        save_movies_data(movies_data)
+
+    return movie
+
+
+# Fonction auxiliaire pour créer et sauvegarder un nouveau film
+def create_and_save_movie(movieid, title, director, rating):
+    new_movie = {"id": movieid, "title": title, "director": director, "rating": rating}
+    with open(MOVIES_DATA_FILE, "r") as file:
+        movies_data = json.load(file)
+        if any(movie['id'] == movieid for movie in movies_data['movies']):
+            return {"error": "Movie ID already exists"}
+
+        movies_data['movies'].append(new_movie)
+        save_movies_data(movies_data)
 
     return new_movie
 
-def delete_movie(_, info, movieid):
-    with open('{}/data/movies.json'.format("."), "r") as file:
+
+# Fonction auxiliaire pour supprimer et sauvegarder la suppression d'un film
+def delete_and_save_movie(movie_id):
+    with open(MOVIES_DATA_FILE, "r") as file:
         movies_data = json.load(file)
         movies = movies_data['movies']
-        movie_to_delete = next((movie for movie in movies if movie['id'] == movieid), None)
+        movie = next((movie for movie in movies if movie['id'] == movie_id), None)
 
-    if movie_to_delete:
-        movies_data['movies'].remove(movie_to_delete)
-        with open('{}/data/movies.json'.format("."), "w") as file:
-            json.dump(movies_data, file)
-        return {"success": True, "message": "Movie deleted successfully"}
+        if not movie:
+            return {"error": "Movie not found"}
 
-    return {"success": False, "message": "Movie ID not found"}
+        movies_data['movies'] = [m for m in movies if m['id'] != movie_id]
+        save_movies_data(movies_data)
+
+    return {"success": True, "message": "Movie deleted successfully"}
 
 
+# Fonction auxiliaire pour sauvegarder les données des films
+def save_movies_data(movies_data):
+    with open(MOVIES_DATA_FILE, "w") as file:
+        json.dump(movies_data, file, indent=4)

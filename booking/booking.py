@@ -1,5 +1,8 @@
 import grpc
 from concurrent import futures
+
+from google.protobuf.json_format import MessageToJson
+
 import booking_pb2
 import booking_pb2_grpc
 
@@ -7,6 +10,8 @@ import showtime_pb2
 import showtime_pb2_grpc
 
 import json
+from datetime import datetime
+
 
 class BookingServicer(booking_pb2_grpc.BookingServicer):
 
@@ -18,7 +23,7 @@ class BookingServicer(booking_pb2_grpc.BookingServicer):
         for booking in self.db:
             yield booking_pb2.BookingItem(
                 userid=booking["userid"],
-                movies=[booking_pb2.Date(date=date["date"], movies=date["movies"]) for date in booking["dates"]]
+                dates=[booking_pb2.Date(date=date["date"], movies=date["movies"]) for date in booking["dates"]]
             )
 
     def GetBookingsByUser(self, request, context):
@@ -26,22 +31,40 @@ class BookingServicer(booking_pb2_grpc.BookingServicer):
             if booking["userid"] == request.userid:
                 yield booking_pb2.BookingItem(
                     userid=booking["userid"],
-                    movies=[booking_pb2.Date(date=date["date"], movies=date["movies"]) for date in booking["dates"]]
+                    dates=[booking_pb2.Date(date=date["date"], movies=date["movies"]) for date in booking["dates"]]
                 )
 
     def CreateBooking(self, request, context):
+
+        # Vérifie si les champs nécessaires sont présents dans les données de réservation
+        if not request or not request.date or not request.movieid:
+            return booking_pb2.CreateBookingResponse(
+                booking=None,
+                error="Invalid data format"
+            )
+
+        # Vérifie le format de la date
+        try:
+            datetime.strptime(request.date, '%Y%m%d')
+        except ValueError:
+            return booking_pb2.CreateBookingResponse(
+                booking=None,
+                error="Invalid date format"
+            )
+
         # Établir la connexion avec le service Showtime
         with grpc.insecure_channel('localhost:3002') as channel:  # Remplacer par l'adresse du service Showtime
             showtime_client = showtime_pb2_grpc.ShowtimeStub(channel)
 
-            # Préparer la requête pour le service Showtime
-            showtime_request = showtime_client.GetMoviesByDate(booking_pb2.Date(date = request.date))
 
             # Appeler le service Showtime pour vérifier la disponibilité du film
             try:
-                showtime_response = showtime_client.GetMoviesByDate(showtime_request)
-                print(showtime_response)
-                if request.movie_id not in showtime_response.movies:
+                showtime_response = showtime_client.GetMoviesByDate(booking_pb2.Date(date=request.date))
+
+                showtime_response_json = MessageToJson(showtime_response)
+                showtime_response_data = json.loads(showtime_response_json)
+
+                if request.movieid not in showtime_response_data['movies']:
                     return booking_pb2.CreateBookingResponse(
                         booking=None,
                         error="Movie not available on this date"
@@ -50,45 +73,36 @@ class BookingServicer(booking_pb2_grpc.BookingServicer):
                 # Gérer l'erreur RPC
                 return booking_pb2.CreateBookingResponse(
                     booking=None,
-                    error=f"Failed to connect to Showtime service: {e}"
+                    error="Failed to connect to Showtime service: "
                 )
 
-        # Vérifier si l'utilisateur et la date existent déjà dans les réservations
-        user_found = False
-        date_found = False
+        date_already_booked = False
+
         for booking in self.db:
             if booking['userid'] == request.userid:
-                user_found = True
-                for movie_date in booking['dates']:
-                    if movie_date['date'] == request.date:
-                        date_found = True
-                        # Ajouter le movie_id à la liste existante
-                        movie_date['movies'].append(request.movie_id)
-                        break
-                if not date_found:
-                    # Créer une nouvelle entrée de date
-                    booking['dates'].append({
-                        "date": request.date,
-                        "movies": [request.movie_id]
-                    })
-                break
+                for d in booking['dates']:
+                    if d['date'] == request.date:
+                        date_already_booked = True
+                        if request.movieid in d['movies']:
+                            return booking_pb2.CreateBookingResponse(
+                                booking=None,
+                                error="An existing item already exists "
+                            )
+        # Ajoute la réservation pour un utilisateur existant ou crée une nouvelle entrée pour un nouvel utilisateur
+        new_booking = {"date": request.date, "movies": [request.movieid]}
+        existing_user_book = next((b for b in self.db if b["userid"] == request.userid), None)
+        existing_user_dates = existing_user_book['dates']
+        if existing_user_book:
+            if date_already_booked:
+                existing_user_dates[0]['movies'].append(request.movieid)
+            else:
+                existing_user_dates.append(new_booking)
+        else:
+            self.db.append({"userid": request.userid, "dates": [new_booking]})
 
-        if not user_found:
-            # Créer une nouvelle réservation pour un nouvel utilisateur
-            self.db.append({
-                "userid": request.userid,
-                "movies": [{
-                    "date": request.date,
-                    "movies": [request.movie_id]
-                }]
-            })
-
-        # Créer une réponse avec les détails de la réservation
         return booking_pb2.CreateBookingResponse(
-            booking=booking_pb2.BookingItem(
-                userid=request.userid,
-                movies=[booking_pb2.Date(date=request.date, movies=[request.movie_id])]
-            )
+            booking=booking_pb2.BookingItem(userid=request.userid, dates=[new_booking]),
+            error=""
         )
 
 
@@ -98,6 +112,7 @@ def serve():
     server.add_insecure_port('[::]:3003')
     server.start()
     server.wait_for_termination()
+
 
 if __name__ == '__main__':
     serve()

@@ -5,7 +5,7 @@ package booking;
 // Le service gérant les réservations.
 service Booking {
     // RPC pour obtenir la liste complète des réservations.
-    rpc GetAllBookings(Empty) returns (stream BookingItem) {}
+    rpc GetAllBookings(EmptyBooking) returns (stream BookingItem) {}
 
     // RPC pour obtenir les réservations d'un utilisateur spécifique.
     rpc GetBookingsByUser(UserId) returns (stream BookingItem) {}
@@ -20,10 +20,10 @@ message UserId {
     string userid = 1;
 }
 
-// Message représentant une réservation.
+// Message représentant les réservations d'un utilisateur.
 message BookingItem {
     string userid = 1;
-    repeated Date movies = 2;
+    repeated Date dates = 2;
 }
 
 // Message représentant une date et les IDs des films réservés pour cette date.
@@ -36,7 +36,7 @@ message Date {
 message CreateBookingRequest {
     string userid = 1;
     string date = 2;
-    string movie_id = 3;
+    string movieid = 3;
 }
 
 // Message de réponse pour créer une réservation.
@@ -46,4 +46,4 @@ message CreateBookingResponse {
 }
 
 // Message vide.
-message Empty { }
+message EmptyBooking { }

@@ -25,12 +25,15 @@ def getUserBookings(userId):
     with grpc.insecure_channel('localhost:3003') as channel:  # Remplacer par l'adresse du service Booking
         booking_client = booking_pb2_grpc.BookingStub(channel)
 
-        booking_request = booking_client.GetBookingsByUser(booking_pb2.UserId(userid=userId))
-
         try:
-            # Appel au service Booking
-            response = booking_client.GetBookingsByUser(booking_request)
-            bookings = [{"userid": booking.userid, "dates": booking.dates} for booking in response]
+            booking_response = booking_client.GetBookingsByUser(booking_pb2.UserId(userid=userId))
+
+            booking_response_json = MessageToJson(booking_response)
+            booking_response_data = json.loads(booking_response_json)
+
+            print(booking_response_data)
+
+            bookings = [{"userid": booking['userid'], "dates": booking['movies']} for booking in booking_response_data]
             return jsonify(bookings), 200
         except grpc.RpcError as e:
             return jsonify({"error": str(e)}), 500
@@ -51,6 +54,7 @@ def getUserBookingMovies(userId):
             for booking in response:
                 for date in booking.dates:
                     for movie_id in date.movie_ids:
+
                         # Construction de la requête GraphQL
                         graphql_query = """
                             query getMovieById($movieId: String!) {
@@ -87,9 +91,9 @@ def addBookingForUser(userId):
         try:
             # Créer une requête gRPC avec les données reçues
             create_booking_request = booking_pb2.CreateBookingRequest(
-                user_id=userId,
+                userid=userId,
                 date=booking_data['date'],
-                movie_id=booking_data['movie_id']
+                movieid=booking_data['movie_id']
             )
 
             # Envoyer la requête au service Booking
